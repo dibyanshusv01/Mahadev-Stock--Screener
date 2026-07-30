@@ -1,7 +1,6 @@
 from datetime import datetime
 import pandas as pd
 import pytz
-import requests
 import streamlit as st
 import yfinance as yf
 
@@ -12,8 +11,8 @@ st.set_page_config(
 
 st.title("📈 Live F&O Screener + Sector Tracker + BTST Predictor")
 st.caption(
-    "Filters: Sector Performance, VWAP, RSI, Volume Spike, NSE Live OI & BTST"
-    " Finder"
+    "Filters: Sector Performance, VWAP, RSI, Volume Spike & BTST Finder (Fast"
+    " & Error-Free)"
 )
 
 # Sector Indices Mapping
@@ -29,7 +28,7 @@ SECTOR_INDICES = {
     "NIFTY INFRA": "^CNXINFRA",
 }
 
-# Stock to Sector Mapping (Sample Mapping for Top F&O Stocks)
+# Stock to Sector Mapping
 STOCK_SECTOR_MAP = {
     "SBIN": "NIFTY BANK",
     "HDFCBANK": "NIFTY BANK",
@@ -312,46 +311,6 @@ def get_sector_performance():
     return df_sec
 
 
-# Function to fetch NSE Live Option Chain Data
-def get_nse_oi_data(symbol):
-    try:
-        session = requests.Session()
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            ),
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
-        }
-        session.get("https://www.nseindia.com", headers=headers, timeout=3)
-        url = f"https://www.nseindia.com/api/option-chain-equities?symbol={symbol}"
-        response = session.get(url, headers=headers, timeout=3)
-
-        if response.status_code == 200:
-            data = response.json()
-            records = data.get("records", {}).get("data", [])
-
-            total_ce_oi_change = 0
-            total_pe_oi_change = 0
-
-            for row in records:
-                if "CE" in row:
-                    total_ce_oi_change += row["CE"].get(
-                        "changeinOpenInterest", 0
-                    )
-                if "PE" in row:
-                    total_pe_oi_change += row["PE"].get(
-                        "changeinOpenInterest", 0
-                    )
-
-            net_oi_change = total_pe_oi_change - total_ce_oi_change
-            return round(net_oi_change, 0)
-    except Exception:
-        pass
-    return None
-
-
 def calculate_rsi(series, period=14):
     delta = series.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
@@ -402,12 +361,6 @@ def run_scanner():
 
             stock = ticker.replace(".NS", "")
             sector = STOCK_SECTOR_MAP.get(stock, "Others")
-            net_oi_change = get_nse_oi_data(stock)
-            oi_status = (
-                f"{net_oi_change:,}"
-                if net_oi_change is not None
-                else "NSE Blocked"
-            )
 
             # Intraday Bullish / Bearish Breakouts
             if price > vwap and rsi > 60 and vol_mult >= 1.5:
@@ -418,7 +371,6 @@ def run_scanner():
                     "VWAP": vwap,
                     "RSI": rsi,
                     "Volume": f"{vol_mult}x",
-                    "Net OI Change": oi_status,
                 })
             elif price < vwap and rsi < 40 and vol_mult >= 1.5:
                 bearish.append({
@@ -428,7 +380,6 @@ def run_scanner():
                     "VWAP": vwap,
                     "RSI": rsi,
                     "Volume": f"{vol_mult}x",
-                    "Net OI Change": oi_status,
                 })
 
             # BTST / STBT Logic
@@ -492,14 +443,14 @@ with st.spinner("Scanning 180+ F&O Stocks for Live Breakouts & BTST..."):
 with col1:
     st.subheader("🚀 Bullish Intraday CE")
     if not df_bull.empty:
-        st.dataframe(df_bull, use_container_width=True)
+        st.dataframe(df_bull, use_container_width=True, hide_index=True)
     else:
         st.info("No Intraday Bullish Breakout Right Now")
 
 with col2:
     st.subheader("🔻 Bearish Intraday PE")
     if not df_bear.empty:
-        st.dataframe(df_bear, use_container_width=True)
+        st.dataframe(df_bear, use_container_width=True, hide_index=True)
     else:
         st.info("No Intraday Bearish Breakdown Right Now")
 
@@ -507,6 +458,6 @@ st.markdown("---")
 st.subheader("🌙 BTST / STBT Overnight Suggestions (Best viewed after 2:30 PM)")
 
 if not df_btst.empty:
-    st.dataframe(df_btst, use_container_width=True)
+    st.dataframe(df_btst, use_container_width=True, hide_index=True)
 else:
     st.info("No BTST/STBT high-probability candidates found right now.")
