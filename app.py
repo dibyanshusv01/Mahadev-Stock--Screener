@@ -1,5 +1,4 @@
 import pandas as pd
-import pandas_ta as ta
 import requests
 import streamlit as st
 import yfinance as yf
@@ -193,6 +192,14 @@ FO_STOCKS = [
 ]
 
 
+def calculate_rsi(series, period=14):
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
+
+
 def run_scanner():
     bullish, bearish = [], []
 
@@ -207,11 +214,10 @@ def run_scanner():
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
 
-            df["RSI"] = ta.rsi(df["Close"], length=14)
-            df["VWAP"] = ta.vwap(
-                df["High"], df["Low"], df["Close"], df["Volume"]
-            )
-            df["Vol_SMA"] = ta.sma(df["Volume"], length=20)
+            # Manual RSI & VWAP Calculation
+            df["RSI"] = calculate_rsi(df["Close"], 14)
+            df["VWAP"] = (df["Volume"] * (df["High"] + df["Low"] + df["Close"]) / 3).cumsum() / df["Volume"].cumsum()
+            df["Vol_SMA"] = df["Volume"].rolling(window=20).mean()
 
             latest = df.iloc[-1]
             price = round(latest["Close"], 2)
