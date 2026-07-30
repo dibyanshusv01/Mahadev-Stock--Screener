@@ -10,13 +10,86 @@ st.set_page_config(
     page_title="Mahadev Stock Screener", page_icon="📈", layout="wide"
 )
 
-st.title("📈 Live F&O Screener (180+ Stocks) + BTST Predictor")
+st.title("📈 Live F&O Screener + Sector Tracker + BTST Predictor")
 st.caption(
-    "Filters: VWAP, RSI, Volume Spike, NSE Live OI & BTST Overnight Position"
+    "Filters: Sector Performance, VWAP, RSI, Volume Spike, NSE Live OI & BTST"
     " Finder"
 )
 
-# Complete List of Active F&O Stocks (180+ Stocks)
+# Sector Indices Mapping
+SECTOR_INDICES = {
+    "NIFTY BANK": "^NSEBANK",
+    "NIFTY IT": "^CNXIT",
+    "NIFTY AUTO": "^CNXAUTO",
+    "NIFTY PHARMA": "^CNXPHARMA",
+    "NIFTY METAL": "^CNXMETAL",
+    "NIFTY FMCG": "^CNXFMCG",
+    "NIFTY REALTY": "^CNXREALTY",
+    "NIFTY ENERGY": "^CNXENERGY",
+    "NIFTY INFRA": "^CNXINFRA",
+}
+
+# Stock to Sector Mapping (Sample Mapping for Top F&O Stocks)
+STOCK_SECTOR_MAP = {
+    "SBIN": "NIFTY BANK",
+    "HDFCBANK": "NIFTY BANK",
+    "ICICIBANK": "NIFTY BANK",
+    "AXISBANK": "NIFTY BANK",
+    "KOTAKBANK": "NIFTY BANK",
+    "BANKBARODA": "NIFTY BANK",
+    "PNB": "NIFTY BANK",
+    "FEDERALBNK": "NIFTY BANK",
+    "TCS": "NIFTY IT",
+    "INFY": "NIFTY IT",
+    "HCLTECH": "NIFTY IT",
+    "TECHM": "NIFTY IT",
+    "WIPRO": "NIFTY IT",
+    "LTIM": "NIFTY IT",
+    "COFORGE": "NIFTY IT",
+    "TATAMOTORS": "NIFTY AUTO",
+    "M&M": "NIFTY AUTO",
+    "MARUTI": "NIFTY AUTO",
+    "BAJAJ-AUTO": "NIFTY AUTO",
+    "HEROMOTOCO": "NIFTY AUTO",
+    "TVSMOTOR": "NIFTY AUTO",
+    "EICHERMOT": "NIFTY AUTO",
+    "BHARATFORG": "NIFTY AUTO",
+    "SUNPHARMA": "NIFTY PHARMA",
+    "CIPLA": "NIFTY PHARMA",
+    "DRREDDY": "NIFTY PHARMA",
+    "DIVISLAB": "NIFTY PHARMA",
+    "LUPIN": "NIFTY PHARMA",
+    "TATASTEEL": "NIFTY METAL",
+    "JINDALSTEL": "NIFTY METAL",
+    "HINDALCO": "NIFTY METAL",
+    "JSWSTEEL": "NIFTY METAL",
+    "VEDL": "NIFTY METAL",
+    "SAIL": "NIFTY METAL",
+    "NMDC": "NIFTY METAL",
+    "COALINDIA": "NIFTY METAL",
+    "ITC": "NIFTY FMCG",
+    "HINDUNILVR": "NIFTY FMCG",
+    "BRITANNIA": "NIFTY FMCG",
+    "DABUR": "NIFTY FMCG",
+    "GODREJCP": "NIFTY FMCG",
+    "TATACONSUM": "NIFTY FMCG",
+    "DLF": "NIFTY REALTY",
+    "GODREJPROP": "NIFTY REALTY",
+    "OBEROIRLTY": "NIFTY REALTY",
+    "RELIANCE": "NIFTY ENERGY",
+    "BPCL": "NIFTY ENERGY",
+    "IOC": "NIFTY ENERGY",
+    "ONGC": "NIFTY ENERGY",
+    "NTPC": "NIFTY ENERGY",
+    "POWERGRID": "NIFTY ENERGY",
+    "LT": "NIFTY INFRA",
+    "HAL": "NIFTY INFRA",
+    "BEL": "NIFTY INFRA",
+    "ADANIPORTS": "NIFTY INFRA",
+    "BHARTIARTL": "NIFTY INFRA",
+}
+
+# Complete List of Active F&O Stocks
 FO_STOCKS = [
     "AARTIIND.NS",
     "ABB.NS",
@@ -197,6 +270,48 @@ FO_STOCKS = [
 ]
 
 
+# Function to get Sector Performance
+def get_sector_performance():
+    sector_data = []
+    tz = pytz.timezone("Asia/Kolkata")
+    today_date = datetime.now(tz).date()
+
+    for name, symbol in SECTOR_INDICES.items():
+        try:
+            df = yf.download(
+                symbol, period="1d", interval="5m", progress=False
+            )
+            if not df.empty:
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(0)
+
+                latest_time = df.index[-1].tz_convert(tz)
+                if latest_time.date() == today_date:
+                    open_p = df["Open"].iloc[0]
+                    curr_p = df["Close"].iloc[-1]
+                    p_change = round(((curr_p - open_p) / open_p) * 100, 2)
+                    status = (
+                        "🟢 Strong"
+                        if p_change > 0.5
+                        else ("🔴 Weak" if p_change < -0.5 else "⚪ Neutral")
+                    )
+                    sector_data.append({
+                        "Sector": name,
+                        "Change (%)": f"{p_change}%",
+                        "Status": status,
+                        "raw_change": p_change,
+                    })
+        except Exception:
+            pass
+
+    df_sec = pd.DataFrame(sector_data)
+    if not df_sec.empty:
+        df_sec = df_sec.sort_values(by="raw_change", ascending=False).drop(
+            columns=["raw_change"]
+        )
+    return df_sec
+
+
 # Function to fetch NSE Live Option Chain Data
 def get_nse_oi_data(symbol):
     try:
@@ -286,6 +401,7 @@ def run_scanner():
             day_low = df["Low"].min()
 
             stock = ticker.replace(".NS", "")
+            sector = STOCK_SECTOR_MAP.get(stock, "Others")
             net_oi_change = get_nse_oi_data(stock)
             oi_status = (
                 f"{net_oi_change:,}"
@@ -297,6 +413,7 @@ def run_scanner():
             if price > vwap and rsi > 60 and vol_mult >= 1.5:
                 bullish.append({
                     "Stock": stock,
+                    "Sector": sector,
                     "Price (₹)": price,
                     "VWAP": vwap,
                     "RSI": rsi,
@@ -306,6 +423,7 @@ def run_scanner():
             elif price < vwap and rsi < 40 and vol_mult >= 1.5:
                 bearish.append({
                     "Stock": stock,
+                    "Sector": sector,
                     "Price (₹)": price,
                     "VWAP": vwap,
                     "RSI": rsi,
@@ -322,11 +440,11 @@ def run_scanner():
             ):
                 btst_list.append({
                     "Stock": stock,
+                    "Sector": sector,
                     "Type": "BTST (Call Carry 🚀)",
                     "Price (₹)": price,
                     "RSI": rsi,
                     "Volume Spike": f"{vol_mult}x",
-                    "Reason": "Closing near Day High + Heavy Volume",
                 })
             elif (
                 price <= day_low * 1.005
@@ -336,11 +454,11 @@ def run_scanner():
             ):
                 btst_list.append({
                     "Stock": stock,
+                    "Sector": sector,
                     "Type": "STBT (Put Carry 🔻)",
                     "Price (₹)": price,
                     "RSI": rsi,
                     "Volume Spike": f"{vol_mult}x",
-                    "Reason": "Closing near Day Low + Heavy Selling",
                 })
 
         except Exception:
@@ -353,7 +471,19 @@ def run_scanner():
     )
 
 
-# Layout
+# --- DASHBOARD LAYOUT ---
+
+st.subheader("📊 Live Sector Strength Tracker")
+with st.spinner("Fetching Live Sector Trends..."):
+    df_sectors = get_sector_performance()
+
+if not df_sectors.empty:
+    st.dataframe(df_sectors, use_container_width=True, hide_index=True)
+else:
+    st.info("Market Closed / Sector Trends Unavailable")
+
+st.markdown("---")
+
 col1, col2 = st.columns(2)
 
 with st.spinner("Scanning 180+ F&O Stocks for Live Breakouts & BTST..."):
